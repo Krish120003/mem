@@ -4,9 +4,11 @@
 use tauri::{CustomMenuItem, RunEvent, SystemTray, SystemTrayMenu, SystemTrayMenuItem};
 
 use screenshots::Screen;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use std::time::Instant;
+
+use chrono;
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
@@ -15,34 +17,73 @@ fn greet(name: &str) -> String {
 }
 
 fn main() {
-    let handle = thread::spawn(|| loop {
-        let primary_screen = Screen::all().unwrap()[0];
+    let screencap_active = Arc::new(Mutex::new(true));
 
-        let mut image = primary_screen.capture().unwrap();
-        let now = Instant::now();
+    let screencap_active_handle: Arc<Mutex<bool>> = Arc::clone(&screencap_active);
 
-        let img_path = format!(
-            "/tmp/target/{}_{}.jpeg",
-            primary_screen.display_info.id,
-            now.elapsed().as_secs()
-        );
+    let handle = thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_secs(2));
+            let is_active = screencap_active_handle.lock().unwrap();
+            if !*is_active {
+                continue;
+            }
 
-        image.save(&img_path).unwrap();
+            let primary_screen = Screen::all().unwrap()[0];
 
-        thread::sleep(Duration::from_millis(2000));
+            let mut image = primary_screen.capture().unwrap();
+            let now = chrono::offset::Utc::now();
+
+            let img_path = format!(
+                "/tmp/target/{}_{}.jpeg",
+                primary_screen.display_info.id, now
+            );
+
+            // image.save(&img_path).unwrap();
+
+            println!("Saved image to {}", img_path);
+        }
     });
 
-    let quit = CustomMenuItem::new("quit".to_string(), "Quit");
-    let hide = CustomMenuItem::new("hide".to_string(), "Hide");
+    let toggle_tray_item = CustomMenuItem::new("toggle".to_string(), "Pause/Resume");
+    let quit_tray_item = CustomMenuItem::new("quit".to_string(), "Quit");
+
+    // this is very hacky way to do pause/resume
+    // waiting for tauri 2.0 to support dynamic menu
+
     let tray_menu = SystemTrayMenu::new()
-        .add_item(quit)
+        .add_item(toggle_tray_item)
         .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(hide);
+        .add_item(quit_tray_item);
 
     let system_tray = SystemTray::new().with_menu(tray_menu);
 
     let mut app = tauri::Builder::default()
         .system_tray(system_tray)
+        .on_system_tray_event(move |app, event| {
+            match event {
+                tauri::SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
+                    "quit" => {
+                        // app.quit();
+                        println!("Quit");
+                        app.exit(0);
+                    }
+                    "toggle" => {
+                        println!("Toggle");
+                        let mut screencap_ac = screencap_active.lock().unwrap();
+                        *screencap_ac = !*screencap_ac;
+
+                        if *screencap_ac {
+                            println!("Resuming");
+                        } else {
+                            println!("Pausing");
+                        }
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        })
         .invoke_handler(tauri::generate_handler![greet])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
