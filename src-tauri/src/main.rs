@@ -4,6 +4,8 @@
 use tauri::{CustomMenuItem, RunEvent, SystemTray, SystemTrayMenu, SystemTrayMenuItem};
 
 use screenshots::Screen;
+use std::fs;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -21,27 +23,36 @@ fn main() {
 
     let screencap_active_handle: Arc<Mutex<bool>> = Arc::clone(&screencap_active);
 
-    let handle = thread::spawn(move || {
-        loop {
-            thread::sleep(Duration::from_secs(2));
-            let is_active = screencap_active_handle.lock().unwrap();
-            if !*is_active {
-                continue;
+    let handle = thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(2));
+        let is_active = screencap_active_handle.lock().unwrap();
+        if !*is_active {
+            continue;
+        }
+
+        let primary_screen = Screen::all().unwrap()[0];
+
+        let mut image = primary_screen.capture().unwrap();
+        let now = chrono::offset::Utc::now();
+
+        let img_path_str = format!(
+            "/tmp/target/{}_{}.jpeg",
+            primary_screen.display_info.id, now
+        );
+        let img_path = Path::new(img_path_str.as_str());
+
+        match fs::create_dir_all(img_path.parent().expect("Invalid parent directory")) {
+            Ok(_) => match image.save(&img_path) {
+                Ok(_) => {
+                    println!("Saved image to {}", img_path_str);
+                }
+                Err(err) => {
+                    eprintln!("Error saving image: {}", err);
+                }
+            },
+            Err(err) => {
+                eprintln!("Error creating directory: {}", err);
             }
-
-            let primary_screen = Screen::all().unwrap()[0];
-
-            let mut image = primary_screen.capture().unwrap();
-            let now = chrono::offset::Utc::now();
-
-            let img_path = format!(
-                "/tmp/target/{}_{}.jpeg",
-                primary_screen.display_info.id, now
-            );
-
-            // image.save(&img_path).unwrap();
-
-            println!("Saved image to {}", img_path);
         }
     });
 
