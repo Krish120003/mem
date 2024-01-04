@@ -7,6 +7,17 @@ license = ""
 repository = ""
 edition = "2021"
 
+[workspace]
+members = [
+    "crates/*",
+]
+
+[workspace.package]
+edition = "2021"
+
+[workspace.dependencies]
+prisma-client-rust-cli = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.10", features = ["sqlite"], default-features = false}
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
@@ -18,8 +29,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 screenshots = "0.8.6"
 chrono = "0.4.31"
-diesel = { version = "2.1.4", features = ["sqlite"] }
-
+prisma-client-rust = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.10", features = ["sqlite"], default-features = false}
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
