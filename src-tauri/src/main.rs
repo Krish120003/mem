@@ -1,6 +1,9 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod prisma;
+use prisma::*;
+
 use tauri::{CustomMenuItem, RunEvent, SystemTray, SystemTrayMenu, SystemTrayMenuItem};
 
 use screenshots::Screen;
@@ -18,7 +21,12 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
+    let db = PrismaClient::_builder().build().await.unwrap();
+
+    // db.user().client.
+
     let screencap_active = Arc::new(Mutex::new(true));
 
     let screencap_active_handle: Arc<Mutex<bool>> = Arc::clone(&screencap_active);
