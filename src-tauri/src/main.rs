@@ -1,7 +1,9 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[allow(warnings, unused)]
 mod prisma;
+
 use prisma::*;
 
 use tauri::{CustomMenuItem, RunEvent, SystemTray, SystemTrayMenu, SystemTrayMenuItem};
@@ -13,7 +15,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use chrono;
+use tokio::task;
+use tokio::time::sleep;
+
+use chrono::{self, Utc};
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
@@ -23,43 +28,56 @@ fn greet(name: &str) -> String {
 
 #[tokio::main]
 async fn main() {
+    // create db connection
     let db = PrismaClient::_builder().build().await.unwrap();
 
-    // db.user().client.
-
     let screencap_active = Arc::new(Mutex::new(true));
-
     let screencap_active_handle: Arc<Mutex<bool>> = Arc::clone(&screencap_active);
 
-    let handle = thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(2));
-        let is_active = screencap_active_handle.lock().unwrap();
-        if !*is_active {
-            continue;
-        }
-
-        let primary_screen = Screen::all().unwrap()[0];
-
-        let mut image = primary_screen.capture().unwrap();
-        let now = chrono::offset::Utc::now();
-
-        let img_path_str = format!(
-            "/tmp/target/{}_{}.jpeg",
-            primary_screen.display_info.id, now
-        );
-        let img_path = Path::new(img_path_str.as_str());
-
-        match fs::create_dir_all(img_path.parent().expect("Invalid parent directory")) {
-            Ok(_) => match image.save(&img_path) {
-                Ok(_) => {
-                    println!("Saved image to {}", img_path_str);
+    let _handle = task::spawn(async move {
+        loop {
+            // thread::sleep(Duration::from_secs(2));
+            sleep(Duration::from_secs(2)).await;
+            {
+                let is_active = screencap_active_handle.lock().unwrap();
+                if !*is_active {
+                    continue;
                 }
+            }
+
+            let primary_screen = Screen::all().unwrap()[0];
+
+            let image = primary_screen.capture().unwrap();
+            let now = chrono::offset::Utc::now();
+
+            let img_path_str = format!(
+                "/tmp/target/{}_{}.jpeg",
+                primary_screen.display_info.id, now
+            );
+            let img_path = Path::new(img_path_str.as_str());
+
+            let current_time: chrono::prelude::DateTime<Utc> = Utc::now();
+
+            match fs::create_dir_all(img_path.parent().expect("Invalid parent directory")) {
+                Ok(_) => match image.save(&img_path) {
+                    Ok(_) => {
+                        println!("Saved image to {}", img_path_str);
+                        let db_result = db
+                            .capture()
+                            .create(img_path_str, current_time.into(), vec![])
+                            .exec()
+                            .await
+                            .unwrap();
+
+                        println!("id: {}", db_result.id);
+                    }
+                    Err(err) => {
+                        eprintln!("Error saving image: {}", err);
+                    }
+                },
                 Err(err) => {
-                    eprintln!("Error saving image: {}", err);
+                    eprintln!("Error creating directory: {}", err);
                 }
-            },
-            Err(err) => {
-                eprintln!("Error creating directory: {}", err);
             }
         }
     });
