@@ -1,8 +1,10 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use entity::capture;
 use migration::{Migrator, MigratorTrait};
-use sea_orm::{Database, DatabaseConnection};
+use sea_orm::ActiveModelTrait;
+use sea_orm::{Database, DatabaseConnection, Set, TryIntoModel};
 use tauri::{CustomMenuItem, Manager, RunEvent, SystemTray, SystemTrayMenu, SystemTrayMenuItem};
 
 use screenshots::Screen;
@@ -16,6 +18,11 @@ use std::time::Duration;
 use tokio::task;
 use tokio::time::sleep;
 
+#[derive(Clone)]
+struct AppState {
+    conn: DatabaseConnection,
+}
+
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -28,7 +35,11 @@ async fn main() {
         .await
         .expect("Database connection failed");
 
+    let handle_conn = conn.clone();
+
     Migrator::up(&conn, None).await.unwrap();
+
+    let state = AppState { conn };
 
     let screencap_active = Arc::new(Mutex::new(true));
     let screencap_active_handle: Arc<Mutex<bool>> = Arc::clone(&screencap_active);
@@ -62,7 +73,16 @@ async fn main() {
                     Ok(_) => {
                         println!("Saved image to {}", img_path_str);
                         // TODO: Add metadata to image
+
+                        let im_model = capture::ActiveModel {
+                            path: Set(img_path_str.to_owned()),
+                            timestamp: Set(current_time.to_owned().to_rfc3339()),
+                            ..Default::default()
+                        };
+
+                        im_model.insert(&handle_conn).await.unwrap();
                     }
+
                     Err(err) => {
                         eprintln!("Error saving image: {}", err);
                     }
@@ -90,6 +110,7 @@ async fn main() {
     let system_tray = SystemTray::new().with_menu(tray_menu);
 
     let app = tauri::Builder::default()
+        .manage(state)
         .system_tray(system_tray)
         .on_system_tray_event(move |app, event| {
             match event {
