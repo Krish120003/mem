@@ -8,17 +8,8 @@ repository = ""
 edition = "2021"
 
 [workspace]
-members = ["crates/*"]
+members = [".", "entity", "migration"]
 
-[workspace.package]
-edition = "2021"
-
-[workspace.dependencies]
-prisma-client-rust-cli = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.10", features = [
-    "sqlite",
-], default-features = false }
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
 tauri-build = { version = "1.5", features = [] }
@@ -29,10 +20,14 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 screenshots = "0.8.6"
 chrono = "0.4.31"
-tokio = { version = "1.26.0", features = ["macros"] }
-prisma-client-rust = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.10", features = [
-    "sqlite",
-], default-features = false }
+tokio = { version = "1.35.1", features = ["full"] }
+sea-orm = { version = "0.12", features = [
+    "sqlx-sqlite",
+    "runtime-tokio-rustls",
+    "macros",
+] }
+entity = { path = "entity" }
+migration = { path = "migration" } # depends on your needs
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem

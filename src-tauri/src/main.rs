@@ -1,50 +1,34 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-#[allow(warnings, unused)]
-mod prisma;
-
-use prisma::*;
-
-use screenshots::image::flat::ViewMut;
-use tauri::{
-    CustomMenuItem, Manager, RunEvent, State, SystemTray, SystemTrayMenu, SystemTrayMenuItem,
-};
+use migration::{Migrator, MigratorTrait};
+use sea_orm::{Database, DatabaseConnection};
+use tauri::{CustomMenuItem, Manager, RunEvent, SystemTray, SystemTrayMenu, SystemTrayMenuItem};
 
 use screenshots::Screen;
 use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::thread;
+
+use chrono::{self, Utc};
 use std::time::Duration;
 
 use tokio::task;
 use tokio::time::sleep;
-
-use chrono::{self, Utc};
-
-use specta::Type;
-
-type DbState<'a> = State<'a, Arc<PrismaClient>>;
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
-#[tauri::command]
-#[specta::specta]
-fn get_image_ranges(db: DbState<'_>) -> (usize, usize) {
-    return (0, 0);
-}
 
 #[tokio::main]
 async fn main() {
-    // create db connection
-    let db = PrismaClient::_builder().build().await.unwrap();
+    let conn: DatabaseConnection = Database::connect("sqlite:///tmp/mem.sqlite?mode=rwc")
+        .await
+        .expect("Database connection failed");
 
-    #[cfg(debug_assertions)]
-    ts::export(collect_types![get_posts, create_post], "../src/bindings.ts").unwrap();
+    Migrator::up(&conn, None).await.unwrap();
 
     let screencap_active = Arc::new(Mutex::new(true));
     let screencap_active_handle: Arc<Mutex<bool>> = Arc::clone(&screencap_active);
@@ -77,14 +61,7 @@ async fn main() {
                 Ok(_) => match image.save(&img_path) {
                     Ok(_) => {
                         println!("Saved image to {}", img_path_str);
-                        let db_result = db
-                            .capture()
-                            .create(img_path_str, current_time.into(), vec![])
-                            .exec()
-                            .await
-                            .unwrap();
-
-                        println!("id: {}", db_result.id);
+                        // TODO: Add metadata to image
                     }
                     Err(err) => {
                         eprintln!("Error saving image: {}", err);
