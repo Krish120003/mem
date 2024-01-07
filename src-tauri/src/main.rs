@@ -6,7 +6,10 @@ mod prisma;
 
 use prisma::*;
 
-use tauri::{CustomMenuItem, RunEvent, SystemTray, SystemTrayMenu, SystemTrayMenuItem};
+use screenshots::image::flat::ViewMut;
+use tauri::{
+    CustomMenuItem, Manager, RunEvent, State, SystemTray, SystemTrayMenu, SystemTrayMenuItem,
+};
 
 use screenshots::Screen;
 use std::fs;
@@ -20,16 +23,28 @@ use tokio::time::sleep;
 
 use chrono::{self, Utc};
 
+use specta::Type;
+
+type DbState<'a> = State<'a, Arc<PrismaClient>>;
+
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+}
+#[tauri::command]
+#[specta::specta]
+fn get_image_ranges(db: DbState<'_>) -> (usize, usize) {
+    return (0, 0);
 }
 
 #[tokio::main]
 async fn main() {
     // create db connection
     let db = PrismaClient::_builder().build().await.unwrap();
+
+    #[cfg(debug_assertions)]
+    ts::export(collect_types![get_posts, create_post], "../src/bindings.ts").unwrap();
 
     let screencap_active = Arc::new(Mutex::new(true));
     let screencap_active_handle: Arc<Mutex<bool>> = Arc::clone(&screencap_active);
@@ -83,6 +98,7 @@ async fn main() {
     });
 
     let toggle_tray_item = CustomMenuItem::new("toggle".to_string(), "Pause/Resume");
+    let view_tray_item = CustomMenuItem::new("view".to_string(), "View History");
     let quit_tray_item = CustomMenuItem::new("quit".to_string(), "Quit");
 
     // this is very hacky way to do pause/resume
@@ -90,12 +106,13 @@ async fn main() {
 
     let tray_menu = SystemTrayMenu::new()
         .add_item(toggle_tray_item)
+        .add_item(view_tray_item)
         .add_native_item(SystemTrayMenuItem::Separator)
         .add_item(quit_tray_item);
 
     let system_tray = SystemTray::new().with_menu(tray_menu);
 
-    let mut app = tauri::Builder::default()
+    let app = tauri::Builder::default()
         .system_tray(system_tray)
         .on_system_tray_event(move |app, event| {
             match event {
@@ -116,14 +133,36 @@ async fn main() {
                             println!("Pausing");
                         }
                     }
+                    "view" => {
+                        println!("View");
+                        app.get_window("viewer").unwrap().show().unwrap();
+                        app.get_window("viewer").unwrap().set_focus().unwrap();
+                    }
                     _ => {}
                 },
                 _ => {}
             }
         })
+        .on_window_event(|event| match event.event() {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                event.window().hide().unwrap();
+                api.prevent_close();
+            }
+            _ => {}
+        })
         .invoke_handler(tauri::generate_handler![greet])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
+
+    let viewer_window = tauri::WindowBuilder::new(
+        &app,
+        "viewer", /* the unique window label */
+        tauri::WindowUrl::App("index.html".into()),
+    )
+    .build()
+    .unwrap();
+
+    viewer_window.hide().unwrap();
 
     app.run(|_app_handle, e| match e {
         // Keep the event loop running even if all windows are closed
