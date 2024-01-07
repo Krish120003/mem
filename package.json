@@ -7,10 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri",
-    "db:generate": "cd src-tauri && cargo prisma generate",
-    "prisma": "cd src-tauri && cargo prisma",
-    "start": "pnpm db:generate && pnpm tauri dev"
+    "tauri": "tauri"
   },
   "dependencies": {
     "react": "^18.2.0",
